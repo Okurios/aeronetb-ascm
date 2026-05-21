@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AeroNetB ASCM — Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body class="app-page">
+
+<!-- NAV -->
+<nav class="navbar">
+  <div class="nav-brand">✈ AeroNetB ASCM</div>
+  <div class="nav-links" id="navLinks"></div>
+  <div class="nav-user">
+    <span id="navUserName"></span>
+    <span id="navUserRole" class="role-badge"></span>
+    <button id="logoutBtn" class="btn btn-sm">Logout</button>
+  </div>
+</nav>
+
+<!-- ALERT BANNER -->
+<div id="alertBanner" class="alert-banner" style="display:none"></div>
+
+<!-- MAIN CONTENT -->
+<main class="main-content">
+
+  <!-- ══════════════════════════════════════════════════════
+       OVERVIEW CARDS  (shown to all roles)
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionOverview" class="section">
+    <h2 class="section-title">Dashboard Overview</h2>
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card" id="kpiSuppliers"><div class="kpi-num">—</div><div class="kpi-label">Active Suppliers</div></div>
+      <div class="kpi-card" id="kpiOrders"><div class="kpi-num">—</div><div class="kpi-label">Pending Orders</div></div>
+      <div class="kpi-card warn" id="kpiShipments"><div class="kpi-num">—</div><div class="kpi-label">Shipments In Transit</div></div>
+      <div class="kpi-card" id="kpiQC"><div class="kpi-num">—</div><div class="kpi-label">QC Reports (Pass Rate)</div></div>
+      <div class="kpi-card danger" id="kpiAlerts"><div class="kpi-num">—</div><div class="kpi-label">Open IoT Alerts</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       PROCUREMENT OFFICER VIEW
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionProcurement" class="section" style="display:none">
+    <h2 class="section-title">Procurement — Orders & Suppliers</h2>
+    <div class="toolbar">
+      <input type="text" id="orderSearch" placeholder="Search by PO number or supplier…" class="search-input">
+      <select id="orderStatusFilter" class="select-input">
+        <option value="">All Statuses</option>
+        <option value="placed">Placed</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="dispatched">Dispatched</option>
+        <option value="delivered">Delivered</option>
+        <option value="completed">Completed</option>
+      </select>
+      <button class="btn btn-primary" onclick="showCreateOrderModal()">+ New Order</button>
+      <button class="btn btn-secondary" onclick="exportTable('ordersTable','orders')">Export CSV</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="ordersTable" class="data-table">
+        <thead><tr><th>PO Number</th><th>Supplier</th><th>Order Date</th><th>Desired Delivery</th><th>Status</th><th>Value (£)</th><th>Actions</th></tr></thead>
+        <tbody id="ordersBody"></tbody>
+      </table>
+    </div>
+    <h3 class="section-subtitle">Supplier Directory</h3>
+    <div class="table-wrapper">
+      <table id="suppliersTable" class="data-table">
+        <thead><tr><th>Supplier</th><th>Country</th><th>Accreditations</th><th>Status</th><th>Parts</th></tr></thead>
+        <tbody id="suppliersBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       QUALITY INSPECTOR VIEW
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionQuality" class="section" style="display:none">
+    <h2 class="section-title">Quality — Inspections & Certifications</h2>
+    <div class="toolbar">
+      <select id="qcResultFilter" class="select-input">
+        <option value="">All Results</option>
+        <option value="Pass">Pass</option>
+        <option value="Fail">Fail</option>
+        <option value="Conditional">Conditional</option>
+      </select>
+      <button class="btn btn-primary" onclick="showQCModal()">+ New QC Report</button>
+      <button class="btn btn-secondary" onclick="exportTable('qcTable','qc-reports')">Export CSV</button>
+      <button class="btn btn-secondary" onclick="window.print()" title="Save as PDF via browser print dialog">🖨 Export PDF</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="qcTable" class="data-table">
+        <thead><tr><th>Report #</th><th>Part</th><th>Supplier</th><th>Type</th><th>Result</th><th>Date</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="qcBody"></tbody>
+      </table>
+    </div>
+    <div id="inspectorStats" class="inspector-stats-bar" style="display:none"></div>
+    <h3 class="section-subtitle">Certifications</h3>
+    <div class="toolbar">
+      <button class="btn btn-primary" onclick="showCertModal()">+ New Certification</button>
+      <button class="btn btn-secondary" onclick="exportTable('certsTable','certifications')">Export CSV</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="certsTable" class="data-table">
+        <thead><tr><th>Cert #</th><th>Part</th><th>Supplier</th><th>Status</th><th>Finalized</th><th>Actions</th></tr></thead>
+        <tbody id="certsBody"></tbody>
+      </table>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="qcPieChart"></canvas><p class="chart-label">QC Results by Type</p></div>
+      <div class="chart-box"><canvas id="qcTrendChart"></canvas><p class="chart-label">Pass/Fail Trend (24 months)</p></div>
+    </div>
+    <div class="chart-row" style="margin-top:16px">
+      <div class="chart-box wide"><canvas id="failureChart"></canvas><p class="chart-label">Top Failure Causes (by occurrence)</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       SUPPLY CHAIN MANAGER VIEW
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionManager" class="section" style="display:none">
+    <h2 class="section-title">Supply Chain — Orders, Shipments & KPIs</h2>
+
+    <h3 class="section-subtitle">Active Orders</h3>
+    <div class="toolbar">
+      <select id="mgrOrderStatusFilter" class="select-input">
+        <option value="">All Statuses</option>
+        <option value="placed">Placed</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="dispatched">Dispatched</option>
+        <option value="delivered">Delivered</option>
+        <option value="completed">Completed</option>
+      </select>
+      <button class="btn btn-secondary" onclick="exportTable('mgrOrdersTable','orders')">Export CSV</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="mgrOrdersTable" class="data-table">
+        <thead><tr><th>PO Number</th><th>Supplier</th><th>Order Date</th><th>Desired Delivery</th><th>Status</th><th>Value (£)</th><th>Actions</th></tr></thead>
+        <tbody id="mgrOrdersBody"></tbody>
+      </table>
+    </div>
+
+    <h3 class="section-subtitle">Shipment Tracking</h3>
+    <div class="toolbar">
+      <select id="shipStatusFilter" class="select-input">
+        <option value="">All</option>
+        <option value="in_transit">In Transit</option>
+        <option value="pending">Pending</option>
+        <option value="delivered">Delivered</option>
+      </select>
+      <button class="btn btn-primary" onclick="showCreateShipmentModal()">+ Create Shipment</button>
+      <button class="btn btn-secondary" onclick="exportTable('shipmentsTable','shipments')">Export CSV</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="shipmentsTable" class="data-table">
+        <thead><tr><th>Shipment #</th><th>Carrier</th><th>Port</th><th>ETA</th><th>Status</th><th>Delayed?</th><th>Last Location</th><th>Actions</th></tr></thead>
+        <tbody id="shipmentsBody"></tbody>
+      </table>
+    </div>
+
+    <h3 class="section-subtitle">Live Shipment Map</h3>
+    <div id="shipmentMap" style="height:360px;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:20px;background:#f3f4f6"></div>
+    <p style="font-size:0.78rem;color:#6b7280;margin:-14px 0 16px">
+      🟠 In transit &nbsp;&nbsp; 🟢 Pending &nbsp;&nbsp; 🔴 Overdue — click a pin for details
+    </p>
+
+    <div class="chart-row">
+      <div class="chart-box wide"><canvas id="supplierKpiChart"></canvas><p class="chart-label">Supplier On-Time Delivery (%)</p></div>
+      <div class="chart-box"><canvas id="defectRateChart"></canvas><p class="chart-label">Defect Rate by Supplier</p></div>
+    </div>
+    <h3 class="section-subtitle">Supplier Leaderboard</h3>
+    <div class="table-wrapper">
+      <table id="kpiTable" class="data-table">
+        <thead><tr><th>Supplier</th><th>Country</th><th>Orders</th><th>On-Time %</th><th>QC Reports</th><th>Defect Rate %</th></tr></thead>
+        <tbody id="kpiBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       EQUIPMENT ENGINEER VIEW
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionEngineer" class="section" style="display:none">
+    <h2 class="section-title">Equipment & IoT Monitoring <span style="font-size:0.7rem;font-weight:600;background:#d1fae5;color:#065f46;padding:3px 8px;border-radius:12px;vertical-align:middle;letter-spacing:0.04em">🔄 LIVE — refreshes every 30s</span></h2>
+    <div class="kpi-grid">
+      <div class="kpi-card" id="iotOk"><div class="kpi-num">—</div><div class="kpi-label">OK</div></div>
+      <div class="kpi-card warn" id="iotWarn"><div class="kpi-num">—</div><div class="kpi-label">Warning</div></div>
+      <div class="kpi-card danger" id="iotCrit"><div class="kpi-num">—</div><div class="kpi-label">Critical</div></div>
+      <div class="kpi-card" id="iotMaint"><div class="kpi-num">—</div><div class="kpi-label">Maintenance</div></div>
+    </div>
+    <h3 class="section-subtitle">Active Alerts</h3>
+    <div class="table-wrapper">
+      <table id="alertsTable" class="data-table">
+        <thead><tr><th>Equipment</th><th>Facility</th><th>Type</th><th>Severity</th><th>Value</th><th>Threshold</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="alertsBody"></tbody>
+      </table>
+    </div>
+    <h3 class="section-subtitle">Equipment Health</h3>
+    <div class="table-wrapper">
+      <table id="equipTable" class="data-table">
+        <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Facility</th><th>Status</th><th>Devices</th><th>Open Alerts</th></tr></thead>
+        <tbody id="equipBody"></tbody>
+      </table>
+    </div>
+    <h3 class="section-subtitle">IoT Sensor Trends</h3>
+    <div class="toolbar" style="margin-bottom:8px">
+      <label style="font-weight:600;font-size:0.9rem;color:#374151;margin-right:8px">Machine:</label>
+      <select id="iotEquipPicker" class="select-input" style="min-width:220px">
+        <option value="">Loading equipment…</option>
+      </select>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box wide"><canvas id="iotTrendChart"></canvas><p class="chart-label" id="iotChartLabel">Temperature Readings</p></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════
+       AUDITOR / REGULATOR VIEW (read-only)
+  ══════════════════════════════════════════════════════ -->
+  <section id="sectionAuditor" class="section" style="display:none">
+    <h2 class="section-title">Compliance & Audit Records <span class="badge-readonly">READ ONLY</span></h2>
+    <h3 class="section-subtitle">Certifications</h3>
+    <div class="table-wrapper">
+      <table id="auditCertsTable" class="data-table">
+        <thead><tr><th>Cert #</th><th>Part</th><th>Supplier</th><th>Status</th><th>Finalized</th><th>Certified By</th></tr></thead>
+        <tbody id="auditCertsBody"></tbody>
+      </table>
+    </div>
+    <h3 class="section-subtitle">QC Reports</h3>
+    <div class="table-wrapper">
+      <table id="auditQcTable" class="data-table">
+        <thead><tr><th>Report #</th><th>Part</th><th>Type</th><th>Result</th><th>Date</th><th>Inspector</th><th>Status</th></tr></thead>
+        <tbody id="auditQcBody"></tbody>
+      </table>
+    </div>
+    <h3 class="section-subtitle">Audit Log</h3>
+    <div class="toolbar">
+      <select id="auditActionFilter" class="select-input">
+        <option value="">All Actions</option>
+        <option value="login">Login</option>
+        <option value="create">Create</option>
+        <option value="approve">Approve</option>
+        <option value="view">View</option>
+      </select>
+      <button class="btn btn-secondary" onclick="exportTable('auditLogTable','audit-log')">Export CSV</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="auditLogTable" class="data-table">
+        <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th><th>Reference</th><th>IP</th></tr></thead>
+        <tbody id="auditLogBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<!-- ══ MODALS ══════════════════════════════════════════════ -->
+<!-- New QC Report Modal -->
+<div id="qcModal" class="modal" style="display:none">
+  <div class="modal-content modal-wide">
+    <h3>New QC Report</h3>
+    <form id="qcForm">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Supplier <span style="color:#c0392b">*</span></label>
+          <select id="qcSupplierSel" required class="select-input">
+            <option value="">— Loading suppliers… —</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Part <span style="color:#c0392b">*</span></label>
+          <select id="qcSupplierPartSel" required class="select-input">
+            <option value="">— Choose supplier first —</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>Inspection Type <span style="color:#c0392b">*</span></label>
+          <select id="qcType" required class="select-input">
+            <option value="visual">Visual</option>
+            <option value="dimensional">Dimensional</option>
+            <option value="NDT">NDT</option>
+            <option value="environmental">Environmental</option>
+            <option value="combined">Combined</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Overall Result <span style="color:#c0392b">*</span></label>
+          <select id="qcResult" required class="select-input">
+            <option value="Pass">Pass</option>
+            <option value="Fail">Fail</option>
+            <option value="Conditional">Conditional</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Inspection Date <span style="color:#c0392b">*</span></label>
+          <input type="date" id="qcDate" required class="form-input">
+        </div>
+      </div>
+      <div class="form-group"><label>Notes / Findings</label><textarea id="qcNotes" rows="3" class="form-input"></textarea></div>
+      <div id="qcModalError" class="alert alert-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Submit Report</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('qcModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Create Order Modal -->
+<div id="orderModal" class="modal" style="display:none">
+  <div class="modal-content modal-wide">
+    <h3>New Purchase Order</h3>
+    <form id="orderForm">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Supplier <span style="color:#c0392b">*</span></label>
+          <select id="orderSupplierSel" required class="select-input"></select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Order Date <span style="color:#c0392b">*</span></label>
+          <input type="date" id="orderDate" required class="form-input">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Desired Delivery <span style="color:#c0392b">*</span></label>
+          <input type="date" id="orderDelivery" required class="form-input">
+        </div>
+      </div>
+
+      <!-- Line Items -->
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin:12px 0;background:#f9fafb">
+        <h4 style="margin:0 0 10px;font-size:0.95rem;color:#374151">📦 Add Line Items</h4>
+        <div class="form-row" style="align-items:flex-end;gap:8px">
+          <div class="form-group" style="flex:3;margin-bottom:0">
+            <label style="font-size:0.8rem">Part</label>
+            <select id="orderPartSel" class="select-input">
+              <option value="">— Choose supplier first —</option>
+            </select>
+          </div>
+          <div class="form-group" style="flex:1;margin-bottom:0">
+            <label style="font-size:0.8rem">Qty</label>
+            <input type="number" id="orderLineQty" min="1" class="form-input" placeholder="1">
+          </div>
+          <div class="form-group" style="flex:1;margin-bottom:0">
+            <label style="font-size:0.8rem">Unit Price (£)</label>
+            <input type="number" id="orderLinePrice" min="0" step="0.01" class="form-input" placeholder="0.00">
+          </div>
+          <div class="form-group" style="flex:1.5;margin-bottom:0">
+            <label style="font-size:0.8rem">Required Delivery</label>
+            <input type="date" id="orderLineDelivery" class="form-input">
+          </div>
+          <button type="button" class="btn btn-primary" style="height:38px;white-space:nowrap;margin-bottom:0" onclick="addOrderLine()">+ Add</button>
+        </div>
+        <div id="orderLinesTable" style="margin-top:8px">
+          <p style="color:#9ca3af;font-size:0.85rem;margin:0">No lines added yet.</p>
+        </div>
+      </div>
+
+      <div id="orderModalError" class="alert alert-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Create Order</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('orderModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Create Shipment Modal -->
+<div id="shipmentModal" class="modal" style="display:none">
+  <div class="modal-content modal-wide">
+    <h3>Create New Shipment</h3>
+    <form id="shipmentForm">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Carrier <span style="color:#c0392b">*</span></label>
+          <input type="text" id="shipmentCarrier" required class="form-input" placeholder="e.g. DHL Aerospace">
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Tracking Number</label>
+          <input type="text" id="shipmentTracking" class="form-input" placeholder="e.g. DHL123456789">
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>Estimated Arrival <span style="color:#c0392b">*</span></label>
+          <input type="date" id="shipmentETA" required class="form-input">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Port of Entry</label>
+          <input type="text" id="shipmentPort" class="form-input" placeholder="e.g. London Heathrow">
+        </div>
+      </div>
+
+      <!-- Multi-PO Link -->
+      <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin:12px 0;background:#f9fafb">
+        <h4 style="margin:0 0 8px;font-size:0.9rem;color:#374151">📋 Link Purchase Orders (optional)</h4>
+        <p style="font-size:0.82rem;color:#6b7280;margin:0 0 10px">
+          Select one or more <strong>confirmed</strong> orders to include in this shipment.
+          Their open lines will be attached and their status will become <strong>dispatched</strong>.
+        </p>
+        <div id="shipmentPoChecklist" style="max-height:180px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px;background:#fff;padding:6px 10px">
+          <p style="color:#9ca3af;font-size:0.85rem;margin:4px 0">Loading orders…</p>
+        </div>
+      </div>
+
+      <div id="shipmentModalError" class="alert alert-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Create Shipment</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('shipmentModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- New Certification Modal -->
+<div id="certModal" class="modal" style="display:none">
+  <div class="modal-content modal-wide">
+    <h3>New Certification (Draft)</h3>
+    <form id="certForm">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Supplier <span style="color:#c0392b">*</span></label>
+          <select id="certSupplierSel" required class="select-input">
+            <option value="">— Select Supplier —</option>
+          </select>
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Part <span style="color:#c0392b">*</span></label>
+          <select id="certSupplierPartSel" required class="select-input">
+            <option value="">— Choose supplier first —</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Link to Approved QC Report (optional)</label>
+        <select id="certQcSel" class="select-input">
+          <option value="">— No QC report linked —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Notes / Initial Remarks</label>
+        <textarea id="certNotes" rows="3" class="form-input" placeholder="e.g. Based on dimensional check + NDT completed on 20/05/2026…"></textarea>
+      </div>
+      <p style="font-size:0.85rem;color:#6b7280;margin:4px 0 10px">
+        ℹ A certification is created as a <strong>draft</strong>. After review, use the <strong>Finalize</strong> button to make it immutable and officially approved.
+      </p>
+      <div id="certModalError" class="alert alert-error" style="display:none"></div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">Create Certification</button>
+        <button type="button" class="btn btn-secondary" onclick="closeModal('certModal')">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detailModal" class="modal" style="display:none">
+  <div class="modal-content modal-wide">
+    <h3 id="detailTitle">Details</h3>
+    <div id="detailContent" class="detail-body"></div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('detailModal')">Close</button></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
